@@ -8,13 +8,9 @@ Part 1 — 업그레이더블 컨트랙트란?
 
 ***Part 2 — 프록시 컨트랙트(Proxy Contract) 해체 분석하기 (이번 글)***
 
-Part 3 — 복제 가능한 컨트랙트(Cloneable Contract) 해체 분석하기
+Part 3 — 비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석하기
 
-Part 4 — 비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석하기
-
-Part 5 — 미니멀 프록시 컨트랙트(Minimal Proxy Contract) 해체 분석하기
-
-Part 6 — 미니멀 비콘 프록시 컨트랙트(Minimal Beacon Proxy Contract) 해체 분석하기
+Part 4 — 미니멀 프록시 컨트랙트(Minimal Proxy Contract) 해체 분석하기
 
 지난 글에서 업그레이더블 컨트랙트가 왜 등장했고, 어떻게 동작하는지 프록시 패턴을 통해 이해하는 시간을 가졌다. 글의 말미에서 업그레이드시에 실제로 변수가 저장되는 스토리지 영역에 문제가 없을지, 로직 컨트랙트를 계속 변경하면서 새로운 변수가 추가 되더라도 크게 문제가 없을지 등에 대한 의문을 남긴채로 마무리했었다. 
 
@@ -50,6 +46,27 @@ Part 6 — 미니멀 비콘 프록시 컨트랙트(Minimal Beacon Proxy Contract
 For contracts that use inheritance, the ordering of state variables is determined by the C3-linearized order of contracts starting with the most base-ward contract. If allowed by the above rules, state variables from different contracts do share the same storage slot.
 
 - 상속된 변수들은 어떻게 되는건지 체크 필요
+
+### Transparent vs UUPS
+
+흔히 사용되는 프록시 패턴에는 Transparent 패턴과 UUPS(Universal Upgradeable Proxy Standard) 패턴이 있다. 두가지 패턴 모드 업그레이더블 컨트랙트를 위한 프록시 패턴이라는 점에서 공통점이 있다. 그렇다면 차이점은 어디에 있을까? 바로 업그레이드 로직이 위치하는 곳에 있다. 업그레이드 로직이 프록시 컨트랙트에 위치하느냐, 로직 컨트랙트에 위치하느냐에 있다. 
+
+Transparent 프록시 패턴은 업그레이드 관련 로직이 프록시 컨트랙트에 위치한다. 이는 곧 프록시 컨트랙트를 배포하는 비용이 조금 더 비싸지는 것을 의미하며, 
+
+예를 들어 동일한 로직 컨트랙트를 사용하는 100개의 프록시 컨트랙트를 배포한다고 해보자. 이 때 업그레이드 관련 코드가 100번 반복해서 추가 된다고 하면, 그만큼 피같은 돈인 가스가 소모된다는 것을 의미한다. 또한, 통상적으로 업그레이드 기능은 필연적으로 스마트 컨트랙트의 탈중앙성을 훼손하게 된다. 관리자에 의한 업그레이드 기능이 사용자의 자산을 위협하는 형태로 활용될 여지가 있기 때문이다. Transparent 패턴은 프록시 컨트랙트가 업그레이드 로직을 포함하기 때문에, 영원히 이 기능은 프록시 컨트랙트에서 제거될 수 없다. 따라서 영구적으로 컨트랙트의 탈중앙성을 훼손하게 된다.
+
+*흥미로운 사실: 업그레이드 기능 없이, 오직 동일한 로직 컨트랙트를 여러번 활용하기 위한 목적으로 사용되는 프록시 패턴을 미니멀 프록시 컨트랙트라고 한다. 이에 대한 자세한 내용은 Part 4 글에서 다룰 예정이다.*
+
+```solidity
+// TODO: add contract example
+```
+
+UUPS는 업그레이드 로직이 구현체, 즉 로직 컨트랙트에 위치하게 된다. 
+
+오픈제플린에서도 Transparent가 아닌 UUPS 패턴 사용을 권장하고 있다.
+
+*The original proxies included in OpenZeppelin followed the [Transparent Proxy Pattern](https://blog.openzeppelin.com/the-transparent-proxy-pattern/)
+. While this pattern is still provided, our recommendation is now shifting towards UUPS proxies, which are both lightweight and versatile.*
 
 - 스토리지 충돌(Storage Collision)
     - Storage Slot 구조
