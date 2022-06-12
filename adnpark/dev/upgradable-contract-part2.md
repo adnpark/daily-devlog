@@ -69,7 +69,7 @@ function allocate() public {
 
 256 비트(32 바이트)크기로 변수가 선언된 순서대로 슬롯에 차곡차곡 할당되는 모습을 확인할 수 있다. 동적 배열이 저장되는 방식, 그리고 매핑의 값들이 매핑이 선언된 순서의 슬롯 넘버와 키값을 해싱한 값의 슬롯 넘버에 저장되는것에 주목해보자. **특히 여기서 매핑 값들이 저장되는 방식이 이후 프록시 패턴에서의 스토리지 충돌을 해결하기 위한 중요한 단초가 된다.**
 
-*여기서 매핑의 데이터가 산발적으로 저장되다보면 데이터간의 충돌이 발생하지 않을까하고 걱정할 수 있지만, 이는 256 비트 해시 함수의 충돌 가능성이 무시 가능한 수준이기 때문에, 매우 높은 확률로 문제가 없다고 할 수 있다.*
+*여기서 매핑의 데이터가 산발적으로 저장되다보면 데이터간의 충돌이 발생하지 않을까하고 걱정할 수 있지만, 이는 256 비트 해시 함수의 해시 충돌 가능성이 무시 가능한 수준이기 때문에, 매우 높은 확률로 문제가 없다고 할 수 있다.*
 
 예시 출처: [https://mixbytes.io/blog/collisions-solidity-storage-layouts](https://mixbytes.io/blog/collisions-solidity-storage-layouts)
 
@@ -87,6 +87,93 @@ For contracts that use inheritance, the ordering of state variables is determine
     - msg.sender check
 
 ## 스토리지 충돌(Storage Collision)
+
+솔리디티의 스토리지 레이아웃, 특히 스토리지 슬롯의 구조에 대해 이해했으니 이제 스토리지 충돌이 무엇이고, 왜 발생하는지 알아볼 차례다. 
+
+먼저 아래와 같은 프록시 컨트랙트와 로직 컨트랙트가 있다고 해보자.
+
+```solidity
+contract Proxy {
+	address implementation
+	// ...
+}
+
+contract Implementation {
+	address foo;
+	uint256 bar;
+	// ...
+}
+```
+
+각 컨트랙트는 아래와 같은 스토리지 레이아웃으로 구성될 것이다.
+
+![Untitled](%5B%E1%84%8B%E1%85%A5%E1%86%B8%E1%84%80%E1%85%B3%E1%84%85%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%83%E1%85%A5%E1%84%87%E1%85%B3%E1%86%AF%20%E1%84%8F%E1%85%A5%E1%86%AB%E1%84%90%E1%85%B3%E1%84%85%E1%85%A2%E1%86%A8%E1%84%90%E1%85%B3%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20Part%202%20-%20%E1%84%91%E1%85%B3%E1%84%85%E1%85%A9%E1%86%A8%206bd9b986b2f8479e9237167c4f92b8f9/Untitled%201.png)
+
+프록시 컨트랙트는 `delegatecall`을 활용하여 로직 컨트랙트의 함수를 호출한다. 이는 곧 로직 컨트랙트의 함수를 프록시 컨트랙트의 컨텍스트에서 실행한다는것을 의미하므로, 로직 컨트랙트에서 `foo` 변수를 수정하게 되면 이는 곧 `implementation` 변수를 수정하게 된다는것을 의미한다. `implementation` 변수는 로직 컨트랙트의 주소를 저장하는 아주 중요한 부분이다. 하지만, 이 변수에 예상치 못한 다른 값이 할당되게 되면 해당 프록시 컨트랙트는 더 이상 제 기능을 하지 못하게 될 것이다. 이처럼 프록시 컨트랙트에서의 의도치 않은 스토리지 충돌은 컨트랙트에 치명적 결함을 야기할 수 있다.
+
+그렇다면 이는 어떻게 해결할 수 있을까? 프록시 컨트랙트는 어떠한 스토리지 슬롯도 사용해서는 안되는것일까? 이를 해결하기 위한 방법이 바로 [EIP-1967](https://eips.ethereum.org/EIPS/eip-1967)인 Standard Proxy Storage Slots, 즉 표준 프록시 스토리지 슬롯이다.EIP-1967의 아이디어는 매우 단순하다.
+
+스토리지 슬롯을 순차적으로 사용하면 충돌 가능성이 높으니, 충돌 가능성이 무시 가능한 수준에서 랜덤에 가깝게(pseudo-random) 배정하면 된다는 것이다.
+
+*위 스토리지 레이아웃 파트에서 매핑이 스토리지 슬롯에 저장되는 방식이 어떠했는지 기억하는가? 바로 매핑이 선언된 슬롯의 인덱스 넘버와 매핑의 키값을 해싱하여 밸류가 저장되는 슬롯 위치를 결정하였다. 이와 비슷한 아이디어를 적용해보자는 것이다!*
+
+구체적인 아이디어는 이러하다. 저장하고 싶은 변수의 이름을 keccak256으로 해싱한 후 1을 뺀 값을 슬롯 넘버로 사용하는 것이다. 이 때 주의해야 할 점은 해싱에 사용되는 값을 **절대로 중복해서 사용하지 않아야 한다**는 것이다. 그렇지 않다면 동일하게 스토리지 충돌이 발생하게 된다.
+
+```solidity
+bytes32 internal constant _IMPLEMENTATION_SLOT = bytes32(uint256(
+  keccak256('eip1967.proxy.implementation')) - 1
+));
+```
+
+그런데 슬롯 넘버는 어떻게 지정하고, 또 해당 슬롯에 있는 값은 어떻게 읽고 쓰는것일까? 이는 오픈제플린의 [ERC1967 관련 컨트랙트](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/ERC1967/ERC1967Upgrade.sol)와 [StorageSlot 컨트랙트](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/StorageSlot.sol)에서 다루고 있다.
+
+```solidity
+abstract contract ERC1967Upgrade {
+	bytes32 internal constant _IMPLEMENTATION_SLOT = bytes32(uint256(
+	  keccak256('eip1967.proxy.implementation')) - 1
+	));
+
+	function _getImplementation() internal view returns (address) {
+		return StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value;
+	}
+
+	function _setImplementation(address newImplementation) private {
+		require(Address.isContract(newImplementation), "ERC1967: new implementation is not a contract");
+		StorageSlot.getAddressSlot(_IMPLEMENTATION_SLOT).value = newImplementation;
+	}
+}
+
+library StorageSlot {
+	function getAddressSlot(bytes32 slot) internal pure returns (AddressSlot storage r) {
+		/// @solidity memory-safe-assembly
+		assembly {
+			r.slot := slot
+		}
+	}
+}
+```
+
+흔히 볼 수 있는 Getter & Setter 패턴과 크게 다르지 않다. 차이점이라면 솔리디티 어셈블리를 통해 해당 슬롯에 위치한 변수를 로우 레벨에서 읽고 쓴다는 것이다. 
+
+이처럼 EIP-1967을 이용하면 프록시 컨트랙트에서 변수를 저장하면서, 동시에 안전하게 로직 컨트랙트를 사용하고 업그레이드도 무리 없이 진행할 수 있다.
+
+### 로직 컨트랙트간의 스토리지 충돌
+
+하지만 EIP-1967으로도 피해갈 수 없는 스토리지 충돌이 존재한다. 바로 이전 버전의 로직 컨트랙트와 업그레이드된 새로운 버전의 로직 컨트랙트의 스토리지 충돌이다. 코드 예시로 빠르게 살펴보자.
+
+```solidity
+contract V1 {
+	address foo;
+	uint256 bar;
+	// ...
+}
+
+contract V2 {
+	address baz;
+	address foo;
+	uint256 bar;
+}
+```
 
 ## 생성자 초기화 코드(Initializing Constructor Code)
 
