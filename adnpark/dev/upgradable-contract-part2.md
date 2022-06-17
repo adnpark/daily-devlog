@@ -1,6 +1,6 @@
 # [업그레이더블 컨트랙트 씨-리즈] Part 2 - 프록시 컨트랙트 해체 분석하기
 
-Created: June 1, 2022 12:47 AM
+Created: 2022년 6월 1일 오전 12:47
 
 ## **[업그레이더블 컨트랙트 씨-리즈 목차]**
 
@@ -175,7 +175,54 @@ contract V2 {
 }
 ```
 
+로직 컨트랙트를 V1에서 V2로 업그레이드 한다고 가정하자. V2에서는 새롭게 address baz라는 상태 변수가 추가 되었다. 그런데, baz의 선언 위치를 기존의 변수보다 앞에 두었다. 이렇게 하면 어떤 일이 생길까? 스토리지 레이아웃을 충분히 이해했다면, 기존 address foo의 슬롯에 address baz의 슬롯이 할당된다는 것을 알 수 있다. 즉, 스토리지 충돌이 발생하게 되는 것이다. 물론 다른 슬롯의 순서에도 변경이 있었기 때문에, 단순히 baz 변수 하나에만 영향을 미치는것은 아니다. 
+
+이러한 충돌을 피하기 위해서는 업그레이드시 상태 변수의 선언 순서에 주의를 기울여야 한다.
+
+```solidity
+contract V1 {
+	address foo;
+	uint256 bar;
+	// ...
+}
+
+contract V2 {
+	address foo;
+	uint256 bar;
+	address baz;
+}
+```
+
+위와 같이 기존 변수의 뒤에 새로운 상태 변수를 선언하면 스토리지 충돌은 발생하지 않는다. 이처럼 상태 변수들의 선언 위치를 하나하나 신경 쓰는것은 상당한 주의를 요한다. 때문에 실제로 업그레이더블 컨트랙트를 작성할 때는 기존의 로직 컨트랙트를 상속해서 작성하는것이 일반적이다.
+
+TODO: 상속하는것이 일반적인 이유 추가하기
+
 ## 생성자 초기화 코드(Initializing Constructor Code)
+
+프록시 패턴에서는 생성자(Constructor)를 사용할 수 없다. 프록시 패턴은 스토리지를 담당하는 프록시 컨트랙트와 실제 구현을 담당하는 로직 컨트랙트로 나뉜다. 생성자 함수는 컨트랙트 배포시에만 단 한번 호출되고 런타임 바이트코드에 포함되지 않으므로, 프록시 컨트랙트는 이를 호출할 수 없다. 
+
+그렇다면 프록시 패턴에서는 생성자와 같이 컨트랙트 배포시에 실행되는 코드를 활용할 수 없는것일까? 다행히도 이 역시 피해갈 수 있는 방법이 있다. 소위 약간 짜치는 방식인데, 생성자 코드를 initializer라고 하는 함수로 옮기고, 해당 함수가 컨트랙트 라이프사이클에서 단 한번만 호출되도록 보장하게 하는 방식이다.
+
+```solidity
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+contract A {
+	constructor(address foo) {
+		// do something...
+	}
+}
+
+contract B is Initializable {
+    // cannot call initialize more than once due to the `initializer` modifier
+    function initialize(
+        address foo
+    ) public initializer {
+        // do something same as contract A contructor code
+    }
+}
+```
+
+위 코드 예시에서 B와 같이 코드를 작성하면 생성자 코드와 동일한 역할을 initialize 함수를 통해 수행할 수 있다. 주의할 점은 반드시 initializer modifier를 적용해야 한다는 것이다.
 
 ## 함수 충돌(Function Clashes)
 
