@@ -226,6 +226,25 @@ contract B is Initializable {
 
 ## 함수 충돌(Function Clashes)
 
+스토리지 충돌과 비슷한 방식으로 함수 레벨에서도 프록시와 로직 컨트랙트 사이에서 충돌이 발생할 수 있다. 프록시 컨트랙트가 어떻게 로직 컨트랙트의 함수를 호출하게 되는지 그 과정을 지난 글(TODO: 링크 추가하기)에서 살펴보았었다. 핵심은 프록시 컨트랙트에 존재하지 않는 함수 식별자를 통해 호출하게 되면, 자연스럽게 fallback 함수로 이어져 delegatecall로 로직 컨트랙트의 함수를 호출하게 되는것이었다.
+
+하지만 만약 프록시 컨트랙트와 로직 컨트랙트에 동일한 함수 식별자가 포함되어 있다면? 예를 들어, 아래와 같은 함수가 두 컨트랙트 모두에 포함되어 있다고 하자.
+
+```solidity
+function owner() public view returns (address) {
+	return owner;
+}
+```
+
+컨트랙트의 owner를 지정하고, 이를 확인하는것은 매우 흔한 패턴이다. 프록시, 로직 컨트랙트 모두 컨트랙트 오너가 있는것도 그렇게 이례적인 케이스는 아니다. 
+
+하지만 함수 충돌과 같은 경우 UUPS 패턴을 따르면 발생 가능성이 현저히 낮아진다. 자세한 내용은 아래 UUPS에서 살펴보자.
+
+TODO: 함수 충돌이 UUPS 패턴에서도 발생할 수 있는지? 그리고 아래 내용도 확인필요함. 서로 다른 함수에서도 충돌이 발생할 수 있다는 내용. 지금도 유효한지 확인 필요
+
+*Clashing can also happen among functions with different names. Every function that is part of a contract’s public ABI is identified, at the bytecode level, by a 4-byte identifier. This identifier depends on the name and arity of the function, but since it’s only 4 bytes, there is a possibility that two different functions with different names may end up having the same identifier. The Solidity compiler tracks when this happens within the same contract, but not when the collision happens across different ones, such as between a proxy and its logic contract. Read [this article](https://medium.com/nomic-labs-blog/malicious-backdoors-in-ethereum-proxies-62629adf3357)
+ for more info on this.*
+
 ## Transparent vs UUPS
 
 흔히 사용되는 프록시 패턴에는 Transparent 패턴과 UUPS(Universal Upgradeable Proxy Standard) 패턴이 있다. 두가지 패턴 모드 업그레이더블 컨트랙트를 위한 프록시 패턴이라는 점에서 공통점이 있다. 그렇다면 차이점은 어디에 있을까? 바로 업그레이드 로직이 위치하는 곳에 있다. 업그레이드 로직이 프록시 컨트랙트에 위치하느냐, 로직 컨트랙트에 위치하느냐에 있다. 
