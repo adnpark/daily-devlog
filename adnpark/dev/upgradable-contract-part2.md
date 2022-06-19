@@ -1,6 +1,6 @@
 # [업그레이더블 컨트랙트 씨-리즈] Part 2 - 프록시 컨트랙트 해체 분석하기
 
-Created: June 1, 2022 12:47 AM
+Created: 2022년 6월 1일 오전 12:47
 
 ## **[업그레이더블 컨트랙트 씨-리즈 목차]**
 
@@ -175,9 +175,75 @@ contract V2 {
 }
 ```
 
+로직 컨트랙트를 V1에서 V2로 업그레이드 한다고 가정하자. V2에서는 새롭게 address baz라는 상태 변수가 추가 되었다. 그런데, baz의 선언 위치를 기존의 변수보다 앞에 두었다. 이렇게 하면 어떤 일이 생길까? 스토리지 레이아웃을 충분히 이해했다면, 기존 address foo의 슬롯에 address baz의 슬롯이 할당된다는 것을 알 수 있다. 즉, 스토리지 충돌이 발생하게 되는 것이다. 물론 다른 슬롯의 순서에도 변경이 있었기 때문에, 단순히 baz 변수 하나에만 영향을 미치는것은 아니다. 
+
+이러한 충돌을 피하기 위해서는 업그레이드시 상태 변수의 선언 순서에 주의를 기울여야 한다.
+
+```solidity
+contract V1 {
+	address foo;
+	uint256 bar;
+	// ...
+}
+
+contract V2 {
+	address foo;
+	uint256 bar;
+	address baz;
+}
+```
+
+위와 같이 기존 변수의 뒤에 새로운 상태 변수를 선언하면 스토리지 충돌은 발생하지 않는다. 이처럼 상태 변수들의 선언 위치를 하나하나 신경 쓰는것은 상당한 주의를 요한다. 때문에 실제로 업그레이더블 컨트랙트를 작성할 때는 기존의 로직 컨트랙트를 상속해서 작성하는것이 일반적이다.
+
+TODO: 상속하는것이 일반적인 이유 추가하기
+
 ## 생성자 초기화 코드(Initializing Constructor Code)
 
+프록시 패턴에서는 생성자(Constructor)를 사용할 수 없다. 프록시 패턴은 스토리지를 담당하는 프록시 컨트랙트와 실제 구현을 담당하는 로직 컨트랙트로 나뉜다. 생성자 함수는 컨트랙트 배포시에만 단 한번 호출되고 런타임 바이트코드에 포함되지 않으므로, 프록시 컨트랙트는 이를 호출할 수 없다. 
+
+그렇다면 프록시 패턴에서는 생성자와 같이 컨트랙트 배포시에 실행되는 코드를 활용할 수 없는것일까? 다행히도 이 역시 피해갈 수 있는 방법이 있다. 소위 약간 짜치는 방식인데, 생성자 코드를 initializer라고 하는 함수로 옮기고, 해당 함수가 컨트랙트 라이프사이클에서 단 한번만 호출되도록 보장하게 하는 방식이다.
+
+```solidity
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+contract A {
+	constructor(address foo) {
+		// do something...
+	}
+}
+
+contract B is Initializable {
+    // cannot call initialize more than once due to the `initializer` modifier
+    function initialize(
+        address foo
+    ) public initializer {
+        // do something same as contract A contructor code
+    }
+}
+```
+
+위 코드 예시에서 B와 같이 코드를 작성하면 생성자 코드와 동일한 역할을 initialize 함수를 통해 수행할 수 있다. 주의할 점은 반드시 initializer modifier를 적용해야 한다는 것이다.
+
 ## 함수 충돌(Function Clashes)
+
+스토리지 충돌과 비슷한 방식으로 함수 레벨에서도 프록시와 로직 컨트랙트 사이에서 충돌이 발생할 수 있다. 프록시 컨트랙트가 어떻게 로직 컨트랙트의 함수를 호출하게 되는지 그 과정을 지난 글(TODO: 링크 추가하기)에서 살펴보았었다. 핵심은 프록시 컨트랙트에 존재하지 않는 함수 식별자를 통해 호출하게 되면, 자연스럽게 fallback 함수로 이어져 delegatecall로 로직 컨트랙트의 함수를 호출하게 되는것이었다.
+
+하지만 만약 프록시 컨트랙트와 로직 컨트랙트에 동일한 함수 식별자가 포함되어 있다면? 예를 들어, 아래와 같은 함수가 두 컨트랙트 모두에 포함되어 있다고 하자.
+
+```solidity
+function owner() public view returns (address) {
+	return owner;
+}
+```
+
+컨트랙트의 owner를 지정하고, 이를 확인하는것은 매우 흔한 패턴이다. 프록시, 로직 컨트랙트 모두 컨트랙트 오너가 있는것도 그렇게 이례적인 케이스는 아니다. 
+
+하지만 함수 충돌과 같은 경우 UUPS 패턴을 따르면 발생 가능성이 현저히 낮아진다. 자세한 내용은 아래 UUPS에서 살펴보자.
+
+TODO: 함수 충돌이 UUPS 패턴에서도 발생할 수 있는지? 그리고 아래 내용도 확인필요함. 서로 다른 함수에서도 충돌이 발생할 수 있다는 내용. 지금도 유효한지 확인 필요
+
+*Clashing can also happen among functions with different names. Every function that is part of a contract’s public ABI is identified, at the bytecode level, by a 4-byte identifier. This identifier depends on the name and arity of the function, but since it’s only 4 bytes, there is a possibility that two different functions with different names may end up having the same identifier. The Solidity compiler tracks when this happens within the same contract, but not when the collision happens across different ones, such as between a proxy and its logic contract. Read [this article](https://medium.com/nomic-labs-blog/malicious-backdoors-in-ethereum-proxies-62629adf3357)
+ for more info on this.*
 
 ## Transparent vs UUPS
 
