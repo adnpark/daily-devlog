@@ -324,3 +324,233 @@ class Box<T> {
 `Box`는 참조 타입이다. 클로저는 참조를 캡처한다. 나중에 요청한 함수 스코프가 종료된 후에도 데이터 응답을 넣어줄 수 있다.
 
 동시에 `DefaultRecommendator` 타입은 `struct`로 그대로 유지할 수 있다.
+
+
+## 2. Delegate 분리 문제 해결하기
+
+여기까지 하고, 얼마 후 다시 코드를 봤다. 
+
+그런데 실행 흐름이 이해가 되지 않았다. 일관되지 않은 실행 흐름과 참조가 이곳저곳에 등장했다.
+
+> 분명 분리를 시켰는데 왜 더 복잡해진 거지?
+
+원인은 'Delegate의 분리'였다.
+
+챕터 1에서 우리는 DataSource와 Delegate를 모두 VC에서 분리시켰다.
+
+UIKit에서 DataSource는 주로 컬렉션 뷰의 출력 흐름을 담당하고, Delegate는 입력 흐름을 담당한다. 
+
+좀 더 구체적으로 말하면, 지금 Delegate는 컬렉션 뷰의 셀 하나가 '선택'됐을 때 처리 로직을 담당하고 있다.
+
+문제는 이 셀 선택의 처리 로직은 다른 객체에 많이 의존한다는 점이다.
+
+상황에 따라 셀이 선택되면 이런 일을 해야 한다.
+- DataSource가 가진 배열에 `IndexPath`로 접근해서, 선택된 셀에 해당하는 데이터 가져오기.
+- `MapKit`으로 LocalSearch를 실행하고, 결과를 받아 상세 검색 담당 DataSource에게 넘겨주기.
+- `NavigationBar`에 들어있는 `SearchBar`의 텍스트 초기화/변경하기.
+- `NavigationBar`에 새로운 뷰 컨트롤러 추가하기 (화면 전환)
+
+가만히 살펴보자. 자기 혼자 하는 일을 하나도 없다. 전부 다른 객체를 참조한다.
+
+그런데 이런 의존성이 높은 객체를 급하게 분리하다보니 이상한 상황이 벌어졌다. Delegate가 콜렉션 뷰와 네비게이션, 그리고 다음에 등장할 뷰 컨트롤러까지 알게 됐다.
+
+아래 코드에서 생성자(init)를 유심히 보자. 콜렉션 뷰와 네비게이션 컨트롤러가 넘겨진다...?
+
+```swift
+class DetailSearchDelegate: NSObject, UICollectionViewDelegate {
+
+    let searchDateVC = SearchDateViewController()
+    let navigationController: UINavigationController?
+    let collectionView: UICollectionView?
+
+    init(navigation: UINavigationController, collectionView: UICollectionView){
+        self.navigationController = navigation
+        self.collectionView = collectionView
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+
+        guard let datasource = self.collectionView?.dataSource as? DetailSearchLocationDataSource else { return }
+        let mapItem = datasource.searchResultData[0]
+        guard let place = PlaceFactory.makePlace(with: mapItem) else { return }
+        searchDateVC.queryParameter?.place = place
+        self.navigationController?.pushViewController(searchDateVC, animated: true)
+    }
+    // ...
+```
+
+아래 `didSelectItemAt`에선 dataSource의 searchResultData까지 꺼내오고 있다. 닷(.)을 2개나 써서 말이다. (디미터 법칙 위반) 
+
+3개의 Delegate가 다 이런 식으로 다른 객체를 참조하고 있었다. 실행 흐름이 매우 복잡해질 수 밖에.
+
+현재 상태를 다이어그램으로 요약하면 다음과 같다.
+
+![before_diagram](https://user-images.githubusercontent.com/17468015/173004810-5c99ae45-9158-4fd7-ad26-fd0e52f41fd8.png)
+
+> 이제 리팩토링으로 다시 개선해보자!
+
+
+### 1. Delegate와 DataSouce를 합쳐서 하위 Controller로 만들기
+
+앞서 말했듯이, Delegate는 무언가를 하기 위해서 DataSource 혹은 ViewController에 의존한다.
+
+`didSelectItemAt`에서 넘겨받은 IndexPath를 가지고 DataSource에게 이 Index가 어떤 데이터인지 알아낸다. 
+
+그 다음으로 흔한 작업. 알아낸 데이터를 다음 VC로 넘겨주고, 다음 VC를 화면에 띄우는 것이다. 이때 다음 화면을 담당하는 VC와 화면을 띄우기 위한 NavigtaionController를 아는 것은 상위 뷰 컨트롤러다.
+
+즉 Delegate의 실제 구현은 ViewController나 Datasource와 관련성이 매우 높다. 
+
+그러다보니 과도한 의존 관계가 생겨난 것이다. 이걸 끊기 위해선 위임이 필요하다. Delegate는 정보 전달만 하고, 작업은 ViewController나 DataSource에게 시켜야겠지.
+
+하지만 그러면 문제가 있다. Delegate를 분리한 이유가 없어진다. 어차피 자기 혼자 처리하는 일도 없는데 왜 별도 객체를 만드느냔 말이야.
+
+그럼 어떻게 해야할까?
+
+뭘 어떻게 해. 합쳐야지.
+
+Delegate를 떼어냈다가 오히려 실행 흐름이 복잡해졌다. 물론 지금 생각하면 Delegate 자체 때문이라기보다는 Delegate를 분리하면서 역할 위임을 제대로 안했기 때문이다. 
+
+하지만 객체를 작게 분리하는 게 항상 좋은 게 아니라는 점을 깨달았다.  쉽게 생각하면 무조건 분리가 좋은 것 같다.
+
+오히려 같은 데이터를 빈번하게 참조하는 메서드는, 데이터를 공유할 수 있는 같은 객체에 둬야 한다. 그래야 객체의 응집도가 높아진다.
+
+Delegate를 합칠 때는 2가지 선택지가 있었다.
+
+* DataSource에 합치기
+* ViewController에 합치기.
+
+더 많이 관련이 있는 쪽에 합치는 게 정답이겠지. 
+
+현재 상황에서 Delegate 메서드는 양쪽 다 의존하는 정도가 비슷했다.
+
+DataSource는 3개로 작게 나누어놓았기에 비교적 역할이 간단했다. ViewController는 이미 DataSource를 전환하고, 화면을 바꾸는 로직이 많이 들어있었다. 
+
+그래서 DataSource와 Delegate를 합치기로 했다.
+
+적절한 이름이 뭘지 고민했다. (DataSource와 Delegate를 합쳤으니 DelegateDataSource??)
+
+생각해보니 그냥 Controller라고 하면 될 것 같았다. View와 Model 사이를 중재하는 역할이 전부다. 전형적인 Controller 역할이다. 보통 Controller라고 하면 ViewController가 일반적이지만, ViewController만 Controller라는 법은 없다.
+
+아래는 둘을 합쳐서 만든 `LocationSearchRecommendationController` 객체다.
+
+
+```swift
+class LocationSearchRecommendationController: NSObject, UICollectionViewDataSource {
+
+func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        guard let place = recommendator?[indexPath.item] as? Place else {
+            return
+        }
+        self.delegate?.didSelectPlace(place)
+    }
+	  // ... 생략
+}
+```
+
+어지러운 외부 참조가 사라졌다. 셀 선택시 Index의 데이터를 파악하기가 쉽다.
+
+
+### 2. 하위 컨트롤러에서 상위 컨트롤러에게 작업 위임하기
+
+위의 함수 안을 살펴보자. self.delegate를 호출하고 있다. 이건 왜 추가됐을까?
+
+아까 전에 Delegate는 DataSource를 참조하는 것 외에도, 화면 전환 로직도 실행한다고 했다.
+
+하지만 화면 전환에 관련된 NavigationBar, SearchBar, ViewController는 이 `LocationSearchRecommendationController`의 역할이라고 하기 어렵다. 
+
+이 하위 컨트롤러의 역할은 단순하다. '추천 장소' 데이터를 관리한다. 추천 데이터를 모델에서 가져온다. 뷰에 뿌려준다. 뷰에서 셀이 선택되면, 그 장소가 어디인지 알려준다. 
+
+그러면 그 외의 모든 로직은? 
+위임한다.
+
+하위 컨트롤러와 상위 뷰 컨트롤러를 Delegate pattern으로 연결한다. 추천 데이터 담당 컨트롤러는 delegate 프로토콜에 정의된 `delegate?.didSelectPlace(place)` 을 호출한다. 그리고 작업을 끝낸다. 
+
+상위 ViewController의 이름은 `LocationSearchViewController`다. 이 VC는 하위 컨트롤러의 Delegate 프로토콜인 `LocationSearchRecommendationControllerDelegate`를 채택한다. 그리고 데이터가 로딩/선택되었을 때 해야할 일을 정의한다.
+
+
+```swift
+protocol LocationSearchRecommendationControllerDelegate: AnyObject {
+    func didLoadData()
+    func didSelectPlace(_ place: Place)
+}
+```
+
+```swift
+extension LocationSearchViewController: LocationSearchRecommendationControllerDelegate {
+    func didLoadData() {
+        DispatchQueue.main.async {
+            self.collectionView.reloadData()
+        }
+    }
+
+    func didSelectPlace(_ place: Place) {
+        DispatchQueue.main.async {
+            self.moveToNextVC(with: place)
+        }
+    }
+}
+```
+
+### 여기서 잠깐, Delegate vs Closure
+
+위의 코드에서 ViewController에게 작업을 위임하는 방법으로 Delegate 패턴을 썼다. 
+
+> 하지만 이게 최선일까?  
+
+Delegate 대신 Closure를 쓰는 방법도 있다. 
+
+Delegate와 Closure는 객체간 1:1 커뮤니케이션을 가능하게 하고, 둘 다 발신하는 객체가 수신하는 객체를 몰라도 된다. 
+
+이 둘은 약한 결합을 만든다. 다시 말해 수신 객체가 바뀌어도 발신 객체의 코드는 변화하지 않는다.
+
+즉, 둘 다 우리가 원하는 바를 달성할 수 있다.
+
+이 둘의 장단점은 무엇일까? 이렇게 설명해보자.
+
+> Delegate의 장점: 써야할 코드가 많다.
+> Delegate의 단점: 설명하는 코드가 많다.
+
+> Closure의 장점: 써야할 코드가 적다.
+> Closure의 단점: 설명하는 코드가 적다.
+
+
+Closure는 문법이 간단해서 쓰기 쉽다. 웬만하면 Closure로 다 해결이 가능하다. 
+
+하지만 Closure는 작업 단위로만 구성된다. 별도의 문법이나 설명이 없다. **비슷한 Closure가 많아지면, 점점 복잡해지고 읽기가 어려워진다.**
+
+Delegate는 Protocol 타입을 추가로 구현한다. 써야할 코드가 더 많고, 약간 번거롭다. 
+
+하지만 두 객체 간 커뮤니케이션이 protocol에 정의된다. 따라서 커뮤니케이션 흐름이 여러개 있을 때, 좀 더 정돈된 코드를 만들 수 있다. **Protocol 타입을 추가로 작성하기가 번거롭지만, 바로 그 점 때문에 복잡한 상황에서 가독성이 더 좋다.**
+
+그래서 내가 Delegate와 Closure를 결정하는 기준이 있다. 
+
+> 커뮤니케이션이 하나인가, 2개 이상인가.
+
+하나라면 간단하게 Closure를, 2개 이상으로 많아지면 Delegate를 쓴다.
+
+Apple이 구현한 API도 다소 비슷한 구석이 있다. 네트워크 요청을 수행하는 URLSession DataTask를 예로 들어보자. 
+
+URLSession은 네트워크 요청 결과를 처리할 때 dataTask와 커뮤니케이션을 한다. 
+
+간단한 **클로저**를 콜백으로 넘기는 방법과, **`URLSessionDataTaskDelegate`**를 구현하는 방법 2가지가 있다.
+
+
+이 둘의 차이는 커뮤니케이션이 한 번이냐, 여러번이냐다. 콜백으로 넘기는 클로저는 최종 완료시에 한번 실행된다. 단순한 커뮤니케이션 흐름이다.
+
+URLSessionDelegate는 여러 이벤트가 있다. willCacheResponse, willPerformHTTPRedirection, didCompleteWithError 등. 커뮤니케이션 흐름이 복잡하다. 그래서 Delegate를 쓰지 않았을까 생각한다. 
+
+
+
+## 결론
+
+위치 검색 기능으로 다시 돌아오자. 
+
+하위 컨트롤러는, 데이터가 로딩/선택 됐을 때 작업을 상위 컨트롤러에게 위임한다. 
+
+즉, 2개 이상의 커뮤니케이션 흐름을 가진다. 
+
+게다가 하나의 ViewController가 3개의 컨트롤러를 가진다. 자칫 흐름이 매우 복잡해질 수 있다. 따라서 비록 써야할 코드는 많지만, Delegate 패턴을 쓰는 게 더 깔끔했다. 
+
+코드를 리팩토링한 후 구조는 이렇게 변했다.
+
+![before](https://user-images.githubusercontent.com/17468015/173010397-bb277c9f-6a9a-4246-bf66-4598bf070e90.png)
