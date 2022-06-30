@@ -82,28 +82,74 @@ UUPS 프록시 컨트랙트의 경우 배포하는데 필요한 가스 비용은
 
 비콘 프록시 구현 코드를 보면서 이해도를 더 높여보자.
 
-- 비콘 프록시는 바로 로직 컨트랙트의 주소를 저장하지 않음
-- 현재 버전의 로직 컨트랙트의 주소를 알려주는 비콘 컨트랙트 주소를 저장함
-- TODO: BeaconProxy.sol 코드 추가
-- TODO: UpgradeableBeacon 코드 추가
+```solidity
+contract BeaconProxy is Proxy, ERC1967Upgrade {
+		// ...
+    function _beacon() internal view virtual returns (address) {
+        return _getBeacon();
+    }
 
-여기까지 보면 비콘 프록시는 장점만 존재하는 마치 프록시 패턴의 최종 진화 버전처럼 느껴진다. 실제로 그럴까?
+    function _implementation() internal view virtual override returns (address) {
+        return IBeacon(_getBeacon()).implementation();
+    }
 
-이전 글에서 프록시 패턴 자체가 컨트랙을 한번 거쳐서 실행하는 구조이기 때문에 어느정도 가스 비효율이 발생할 수 밖에 없다고 했었다. 비콘 프록시는 여기에 하나의 레이어를 더 추가한 격이므로, 가스 비효율이 더 크게 증가하게 된다. 즉, 비콘 프록시 패턴은 대규모 업그레이드의 효율성을 위해 평상시의 트랜잭션 비효율을 어느정도 감수하는것을 선택한 것이다.
+    function _setBeacon(address beacon, bytes memory data) internal virtual {
+        _upgradeBeaconToAndCall(beacon, data, false);
+    }
+		// ...
+}
+```
 
-그렇다면 비콘 프록시는 언제 사용해야 하는걸까?
+[source](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/beacon/BeaconProxy.sol)
 
-- 동일한 로직을 사용하는 대규모의 컨트랙트를 동시에 업그레이드 해야할 필요성이 있는 경우
-- 개인별 고객의 자산을 관리하는 Vault 컨트랙트가 있다.
-- Vault 컨트랙트는 어카운트별로 새롭게 배포된다.
-- 모든 Vault 컨트랙트의 로직은 동일하다.
-- 추후 Vault 컨트랙트의 기능을 업그레이드하거나, 보안 이슈가 발생했을 때 바로 대응할 수 있어야 한다.ㅇ
+먼저 오픈제플린의 `BeaconProxy.sol` 컨트랙트부터 살펴보자. 이름에서 알 수 있듯이 “비콘" 방식의 프록시 컨트랙트이다. 가장 눈여겨 볼 점은 `implementation` 컨트랙트 주소를 바로 가져오지 않고, 비콘 컨트랙트를 거쳐서 가져오고 있다는 점이다. 나머지는 일반적인 프록시 컨트랙트와 모두 동일하다. 
 
-요약
+```solidity
+contract UpgradeableBeacon is IBeacon, Ownable {
+		address private _implementation;
+		// ...
+
+    function implementation() public view virtual override returns (address) {
+        return _implementation;
+    }
+
+    function upgradeTo(address newImplementation) public virtual onlyOwner {
+        _setImplementation(newImplementation);
+        emit Upgraded(newImplementation);
+    }
+
+    function _setImplementation(address newImplementation) private {
+        require(Address.isContract(newImplementation), "UpgradeableBeacon: implementation is not a contract");
+        _implementation = newImplementation;
+    }
+
+	// ...
+}
+```
+
+[Source](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/beacon/UpgradeableBeacon.sol)
+
+다음은 오픈제플린의 `UpgradeableBeacon.sol` 코드로, 비콘 컨트랙트를 구현한 것이다. 역시 구현이 매우 단순하다. `_implementation` 주소를 비콘 컨트랙트에서 직접 저장한다는 점, 그리고 `upgradeTo()` 함수를 통해 해당 주소를 계속해서 업데이트 할 수 있다는점을 주의깊게 살펴보자.
+
+*`_implementation` 변수로 인한 스토리지 충돌은 걱정하지 않아도 된다. 비콘 컨트랙트는 프록시 컨트랙트의 실행 로직으로 쓰일 컨트랙트가 아니기 때문이다. 비콘 컨트랙트는 오직 로직 컨트랙트의 주소만 열람하는 목적으로 사용된다.*
+
+## 비콘 프록시의 장단점
+
+여기까지만 보면 비콘 프록시는 장점만 존재하는 마치 프록시 패턴의 최종 진화 버전처럼 느껴진다. 실제로 그럴까?
+
+이전 글에서 프록시 패턴 자체가 컨트랙을 한번 거쳐서 실행하는 구조이기 때문에 어느정도 가스 비효율이 발생할 수 밖에 없다고 했었다. 비콘 프록시는 여기에 하나의 레이어를 더 추가한 격이므로, 가스 비효율이 더 크게 증가하게 된다. 
+
+즉, 비콘 프록시 패턴은 대규모 업그레이드의 효율성을 위해 평상시의 트랜잭션 비효율을 어느정도 감수하는것을 선택한 것이다.
+
+그렇다면 비콘 프록시는 언제 사용해야 잘 사용한걸까? 그 답은 매우 간단하다. 
+
+**동일한 로직**을 사용하는 **대규모의** 컨트랙트를 **한번에 업그레이드** 해야하는 경우 사용하면 된다. 위에서 예시로 들었던 크리에이터용 소셜 토큰 컨트랙트 배포가 아주 적합한 예시일 것이다. 
+
+## 요약
 
 - 동일한 로직을 사용하는 컨트랙트를 대규모로 배포하고 동시에 업그레이드 가능하게 하려면 비콘 프록시를 사용하자
-- 비콘 프록시는 무적이 아니다. 기존 프록시 패턴에 비해 컨트랙트 호출을 위해 거쳐야 하는 컨트랙트가 하나 더 추가된다. 즉, 트랜잭션 실행을 위한 가스 부담이 증가하게 되므로, 반드시 목적에 맞게 잘 사용해야 한다.
-- 만약 동일한 로직의 컨트랙트를 대규모로 효율적으로 배포하는것 자체에만 관심이 있다면, 다음 글 미니멀 프록시를 참고해보자.
+- 비콘 프록시는 만능이 아니다. 기존 프록시 패턴에 비해 컨트랙트 호출을 위해 거쳐야 하는 컨트랙트가 하나 더 추가된다. 즉, 트랜잭션 실행을 위한 가스 부담이 증가하게 되므로, 반드시 목적에 맞게 잘 사용해야 한다.
+- 이 글에서 다루지는 않았지만, 만약 동일한 로직의 컨트랙트를 대규모로 효율적으로 배포하는것 자체에만 관심이 있다면, 다음 글 미니멀 프록시를 참고해보자.
 
 더 읽어보기
 
