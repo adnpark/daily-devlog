@@ -24,6 +24,45 @@ Part 3 — [비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석�
 - 미니멀 프록시는 말 그대로 미니멀한, 최소한의 기능만 구현된 프록시 컨트랙트라는 의미다.
 - 
 
+```solidity
+contract PseudoMinimalProxy {
+	address masterCopy;
+	
+	constructor(address _masterCopy) {
+		masterCopy = _masterCopy; 
+	}
+	
+	function forward() external returns (bytes memory) {
+		(bool success, bytes memory data) = masterCopy.delegatecall(msg.data);
+		require(success);
+
+		return data;
+	}
+}
+```
+
+`3d602d80600a3d3981f3363d3d373d3d3d363d73bebebebebebebebebebebebebebebebebebebebe5af43d82803e903d91602b57fd5bf3`
+
+363d3d373d3d3d363d73bebebebebebebebebebebebebebebebebebebebe5af43d82803e903d91602b57fd5bf3
+
+1. Get the calldata: `363d3d37`
+2. delegate the call: 3d3d3d363d73bebebebebebebebebebebebebebebebebebebebe5af4
+3. get the data returned: 3d82803e
+4. return or revert: 903d91602b57fd5bf3
+
+- EVM bytecode 정리
+- 컨트랙트의 솔리디티 코드는 내부적으로 EVM이 이해할 수 있는 바이트코드로 컴파일되어 블록체인에 저장된다.
+- 이 때 바이트코드는 크게 두가지로 구분될 수 있다.
+- Creation Bytecode(a.k.a Init Code)
+    - 컨트랙트의 생성시에 필요한 바이트코드, 생성자 함수 호출을 포함한다. 그리고 런타임 바이트코드를 리턴한다.
+- Runtime Bytecode(a.k.a Deployed Bytecode)
+    - 컨트랙트 배포 후 사용되는 런타임 바이트코드로, 우리가 일반적으로 생각하는 컨트랙트 코드가 바로 이것이다.
+
+Creation code 에는 다음 두가지 동작만 필요함
+
+1. Copy the runtime code into memory.
+2. Get the code into memory and return it.
+
 - 미니멀 프록시 구현 코드 분석
 - EVM 바이트코드로 이루어져 있다.
 
@@ -42,3 +81,5 @@ Part 3 — [비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석�
 - [https://blog.originprotocol.com/a-minimal-proxy-in-the-wild-ae3f7b8da990](https://blog.originprotocol.com/a-minimal-proxy-in-the-wild-ae3f7b8da990)
 - [https://eips.ethereum.org/EIPS/eip-1167](https://eips.ethereum.org/EIPS/eip-1167)
 - [https://www.youtube.com/watch?v=9xqoK2nKkM4](https://www.youtube.com/watch?v=9xqoK2nKkM4)
+- [https://medium.com/authereum/bytecode-and-init-code-and-runtime-code-oh-my-7bcd89065904](https://medium.com/authereum/bytecode-and-init-code-and-runtime-code-oh-my-7bcd89065904)
+- [https://leftasexercise.com/2021/09/05/a-deep-dive-into-solidity-contract-creation-and-the-init-code/](https://leftasexercise.com/2021/09/05/a-deep-dive-into-solidity-contract-creation-and-the-init-code/)
