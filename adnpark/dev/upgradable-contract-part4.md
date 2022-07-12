@@ -84,39 +84,42 @@ EVM 바이트코드는 또 크게 두가지로 구분될 수 있다.
 
 주황색으로 표시된 코드가 Creation code, 보라색 코드가 Runtime Code이다. 여기서 Creation code는 당장 자세히 이해할 필요가 없으므로 우선 무시하자.
 
-우리가 주목해야 할 것은 Runtime code가 정확히 어떤 기능들을 포함하고 있는지이다. 바이트코드 하나 하나 뜯어보기 전에 먼저, 미니멀 프록시 컨트랙트의 런타임코드에 필요한 기능이 무엇인지 살펴보자.
+우리가 주목해야 할 것은 Runtime code가 정확히 어떤 기능들을 포함하고 있는지이다. 바이트코드 하나 하나 뜯어보면서 이해해도 좋지만, 조금 더 하이레벨에서 개략적으로 이해를 해보자. 
 
-- 우리가 원하는것은 오직 하나이다. 지정된 컨트랙트 어드레스로 delegatecall을 하고 실행 결과를 return 하는것
-- 이를 크게 네가지 세부 동작으로 구분할 수 있다.
+물론 극한의 로우 레벨에서 바이트코드를 하나 하나 다 이해하고 싶다면 [이 글](https://blog.openzeppelin.com/deep-dive-into-the-minimal-proxy-contract/)을 참고해보자.
+
+미니멀 프록시에서 구현될 기능은 오직 하나이다. 지정된 컨트랙트 어드레스로 delegatecall을 하고 실행 결과를 return 하는것이다.
+
+이는 다시 크게 네가지 세부 동작으로 구분된다.
+
 1. Calldata 가져오기
-2. 지정된 주소로 delegatecall
-3. 실행 결과 가져오기
+2. 지정된 주소의 컨트랙트로 delegatecall
+3. delegatecall 실행 결과 가져오기
 4. 실행 결과에 따라 return 하거나 revert 하기
 
-- calldata가 무엇인지 모르겠다면, 지난 글(TODO: add link)의 설명을 참고해보자.
+*calldata가 무엇인지 모르겠다면, 지난 글(TODO: add link)의 설명을 참고해보자.*
+
+이 네가지 동작들을 바이트코드로 구현한것이 바로 미니멀 프록시 컨트랙트의 런타임 코드이다.
+
+1. Calldata 가져오기: `363d3d37`
+2. 지정된 주소의 컨트랙트로 delegatecall: `3d3d3d363d73bebebebebebebebebebebebebebebebebebebebe5af4`
+3. delegatecall 실행 결과 가져오기: `3d82803e`
+4. 실행 결과에 따라 return 하거나 revert 하기: `903d91602b57fd5bf3`
+
+*“be…be” 는 delegatecall의 대상이 될 컨트랙트 주소로, 실제 배포시에는 변경되어야 하는 값이다.*
+
+이를 더 직관적인 형태로 표현하면 아래 그림과 같다.
 
 ![Untitled](%5B%E1%84%8B%E1%85%A5%E1%86%B8%E1%84%80%E1%85%B3%E1%84%85%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%83%E1%85%A5%E1%84%87%E1%85%B3%E1%86%AF%20%E1%84%8F%E1%85%A5%E1%86%AB%E1%84%90%E1%85%B3%E1%84%85%E1%85%A2%E1%86%A8%E1%84%90%E1%85%B3%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20Part%204%20-%20%E1%84%86%E1%85%B5%E1%84%82%E1%85%B5%E1%84%86%203cdff3c95d2f4208a0252446d33d1590/Untitled%202.png)
 
-- 이 동작들을 바이트코드로 구현하면 위 그림과 같다.
-- be…be 는 delegatecall의 대상이 될 컨트랙트 주소로, 실제 배포시에는 변경되어야 하는 값이다.
+마지막으로 미니멀 프록시 컨트랙트의 Creation code에서 필요한 동작은 간단하다. 
 
-- 마지막으로 Creation code에서 필요한 동작은 간단하다.
-- Runtime code를 메모리에 복사한 후 해당 코드를 return 한다.
+1. 런타임 코드를 메모리로 복사한다.
+2. 메모리에 있는 코드를 리턴한다.
 
-Creation code 에는 다음 두가지 동작만 필요함
+이를 구현한것이 오렌지색 부분의 바이트코드(`3d602d80600a3d3981f3`)이다.
 
-1. Copy the runtime code into memory.
-2. Get the code into memory and return it.
-
-이를 구현한것이 오렌지색 부분의 바이트코드이다.
-
-- 만약 바이트코드를 로우레벨에서 더 자세히 이해하고 싶다면 [이 글](https://blog.openzeppelin.com/deep-dive-into-the-minimal-proxy-contract/)을 참고해보자.
-
-1. Get the calldata: `363d3d37`
-2. delegate the call: 3d3d3d363d73bebebebebebebebebebebebebebebebebebebebe5af4
-3. get the data returned: 3d82803e
-4. return or revert: 903d91602b57fd5bf3
-5. Creation Bytecode: `3d602d80600a3d3981f3`
+미니멀 프록시 컨트랙트의 바이트코드를 이해했으니, 이를 활용한 실제 컨트랙트 구현 코드를 살펴보자.
 
 ```solidity
 function clone(address implementation) internal returns (address instance) {
@@ -148,28 +151,46 @@ function clone(address implementation) internal returns (address instance) {
 
 [Clones.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/proxy/Clones.sol)
 
-- 미니멀 프록시 컨트랙트의 바이트코드를 이해했으니, 이를 활용한 실제 컨트랙트 구현 코드를 살펴보자.
-- 위 코드는 오픈제플린의 미니멀 프록시 구현체인 Clones.sol이다.
-- 이름에서 알 수 있듯이, 컨트랙트를 말 그대로 Clone, 즉 복제하는 기능을 구현한다.
-- 알 수 없는 어셈블리 코드가 늘어져있는데, 차근차근 clone() 함수에 대해 살펴보자.
-- 먼저 인자로 implementation을 받고 있다, 이는 로직 컨트랙트의 주소를 의미한다.
-- let ptr := mload(0x40)
-    - 0x40 포인터에 저장된 32 바이트 메모리를 읽어와서 ptr에 할당한다.
-    - 0x40 슬롯은 EVM에서 특수한 역할을 담당한다. Free memory pointer로, 할당되어있는 메모리의 마지막 포인터를 의미한다.
-- mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
-    - ptr 위치의 메모리에 32 바이트(0x3d…000)를 저장한다.
-    - Creation code 및 1,2번 동작에 대한 코드이다. 클론 대상 컨트랙트 주소 직전까지의 바이트코드이다.
-- mstore(add(ptr, 0x14), shl(0x60, implementation))
-    - ptr 포인터 위치에서 0x14(20 bytes)를 더한 위치에 implementation 주소를 저장한다.
-- mstore(add(ptr, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
-    - ptr 포인터 위치에서 0x28(40 bytes)를 더한 위치에 나머지 바이트코드를 저장한다.
-- instance := create(0, ptr, 0x37)
-    - ptr 포인터 위치부터 시작하는 0x37(55 bytes) 사이즈의 코드를 사용하여 새로운 컨트랙트를 배포한다. 새로운 컨트랙트에 0 Ether를 전송한다.
-- require(instance != address(0), "ERC1167: create failed");
-    - 배포된 컨트랙트의 주소가 zero address가 아닌지 확인한다.
-    - 즉, 미니멀 프록시 컨트랙트가 잘 배포되었는지 확인한다.
+위 코드는 오픈제플린의 미니멀 프록시 구현체인 Clones.sol이다. 이름에서 알 수 있듯이, 컨트랙트를 Clone, 말 그대로 복제하는 기능을 구현한다. 알 수 없는 어셈블리 코드가 늘어져있는데, 차근차근 clone() 함수에 대해 살펴보자.
 
-- Clones.sol에는 clone() 함수 뿐만 아니라 cloneDeterministic() 함수도 있는데, 이는 미니멀 프록시 컨트랙트를 create2 를 이용하여 배포하는것이다. create2는 컨트랙트 주소를 고정하여 배포할 수 있도록 한다. create2는 다음 기회에 다시 자세히 다뤄보자.
+먼저 인자로 `implementation`을 받고 있다, 이는 로직 컨트랙트의 주소를 의미한다. clone() 함수는 결국 `implementation` 주소의 컨트랙트로 delegatecall 하는 컨트랙트를 배포하는 기능을 수행한다. 
+
+이제 코드 라인 하나하나씩 살펴보도록 하자.
+
+*위 코드에 포함된 주석과 함께 읽으면 더 이해가 쉽습니다 :)*
+
+`let ptr := mload(0x40)`
+
+- `0x40` 포인터에 저장된 32 바이트 메모리를 읽어와서 `ptr`에 할당한다.
+- `0x40` 슬롯은 EVM에서 특수한 역할을 담당한다. Free memory pointer로, 이미 할당된 메모리의 마지막 포인터(즉, 비어있는 메모리 포인터)를 의미한다.
+
+`mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)`
+
+- `ptr` 위치의 메모리에 32 바이트(`0x3d60…000`)를 저장한다.
+- Creation code 및 1,2번 동작에 대한 코드이다. 클론 대상 컨트랙트 주소 직전까지의 바이트코드이다.
+
+`mstore(add(ptr, 0x14), shl(0x60, implementation))`
+
+- `ptr` 포인터 위치에서 `0x14`( = 20 bytes)를 더한 위치에 `implementation` 주소를 저장한다.
+- 앞에서 살펴본 “bebe…be” 값을 `implementation` 이 대체하는 것이다.
+
+`mstore(add(ptr, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)`
+
+- `ptr` 포인터 위치에서 `0x28`( = 40 bytes)를 더한 위치에 나머지 바이트코드를 저장한다.
+
+`instance := create(0, ptr, 0x37)`
+
+- `ptr` 포인터 위치부터 시작하는 `0x37`( = 55 bytes) 사이즈의 코드를 사용하여 새로운 컨트랙트를 배포한다.
+- 새로운 컨트랙트에 0 Ether를 전송한다.
+
+`require(instance != address(0), "ERC1167: create failed");`
+
+- 배포된 컨트랙트의 주소가 `zero address`가 아닌지 확인한다.
+- 즉, 미니멀 프록시 컨트랙트가 잘 배포되었는지 확인한다.
+
+*Clones.sol에는 clone() 함수 뿐만 아니라 cloneDeterministic() 함수도 있는데, 이는 미니멀 프록시 컨트랙트를 create2 를 이용하여 배포하는것이다. create2는 컨트랙트 주소를 고정하여 배포할 수 있도록 한다. create2는 다음 기회에 다시 자세히 다뤄보자.*
+
+실제 clone 사용하는 예시 추가?
 
 ## 들어가며
 
