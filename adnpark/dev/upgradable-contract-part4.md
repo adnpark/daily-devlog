@@ -24,6 +24,8 @@ Part 3 — [비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석�
 
 그런데 여기서 배포 비용을 더 최적화 할 수 있는 방법이 없을까? 더 나아가서 업그레이드는 잘 모르겠고, 오로지 컨트랙트의 효율적인 배포만을 최적화 하면 안될까? 
 
+## Minimal Proxy
+
 이런 의문에 대한 해답으로 나온것이 바로 오늘 다룰 **[EIP-1167: Minimal Proxy Contract](https://eips.ethereum.org/EIPS/eip-1167), 즉 미니멀 프록시 컨트랙트이다.**
 
 미니멀 프록시는 말 그대로 미니멀한, 즉 최소한의 기능만 구현된 프록시 컨트랙트라는 의미이다. 그렇다면 여기서 중요한것은 구체적으로 “무엇을 최소한으로 구현했다는 것인가?" 이다.
@@ -37,6 +39,8 @@ Part 3 — [비콘 프록시 컨트랙트(Beacon Proxy Contract) 해체 분석�
 ![Untitled](%5B%E1%84%8B%E1%85%A5%E1%86%B8%E1%84%80%E1%85%B3%E1%84%85%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%83%E1%85%A5%E1%84%87%E1%85%B3%E1%86%AF%20%E1%84%8F%E1%85%A5%E1%86%AB%E1%84%90%E1%85%B3%E1%84%85%E1%85%A2%E1%86%A8%E1%84%90%E1%85%B3%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20Part%204%20-%20%E1%84%86%E1%85%B5%E1%84%82%E1%85%B5%E1%84%86%203cdff3c95d2f4208a0252446d33d1590/Untitled.png)
 
 다이어그램을 통해 이해도를 더 높여보자. 우리의 관심사는 CloneTarget 컨트랙트를 여러개 배포하는 것이다. CloneTarget 코드를 그대로 활용하여 컨트랙트를 여러번 배포할수도 있지만, 이는 알다시피 비용 측면에서 매우 비효율적인 방식이다. MinimalProxyFactory 컨트랙트를 통해 미니멀 프록시 컨트랙트인 Clones#N 을 배포한다. Clones 컨트랙트의 기능은 모두 단 한가지이다. CloneTarget 컨트랙트로 delegatecall을 수행하는 것이다.
+
+## Minimal Proxy Deep Dive
 
 더 이해하기 쉽게 미니멀 프록시를 의사코드를 통해 간단하게 구현해보자.
 
@@ -190,15 +194,16 @@ function clone(address implementation) internal returns (address instance) {
 
 *Clones.sol에는 clone() 함수 뿐만 아니라 cloneDeterministic() 함수도 있는데, 이는 미니멀 프록시 컨트랙트를 create2 를 이용하여 배포하는것이다. create2는 컨트랙트 주소를 고정하여 배포할 수 있도록 한다. create2는 다음 기회에 다시 자세히 다뤄보자.*
 
-실제 clone 사용하는 예시 추가?
+여기까지 미니멀 프록시에 대해 살펴보았다. 미니멀 프록시는 엄밀히 말하면 업그레이더블 컨트랙트에 포함되지 않으므로, 시리즈에 완전히 부합하지는 않는 주제일 수 있다. 하지만, 업그레이더빌리티의 근본 원리인 프록시 패턴을 동일하게 이용하였고, 실제 프로젝트에서 꽤 빈번하게 사용되는 패턴이므로 함께 다루었다. 
 
-## 들어가며
+이 글을 끝으로 업그레이더블 컨트랙트 시리즈는 드디어 막을 내렸습니다. 이 글이 컨트랙트 개발자분들께 조금이나마 도움이 되었길 바라며, 곧 더 재밌는 시리즈로 다시 돌아오겠습니다!
 
 ## 요약
 
-- 
+- 동일한 로직을 가진 컨트랙트를 다수 배포해야 하고, 업그레이드 기능이 필요 없다면 미니멀 프록시를 사용하는것이 베스트 프랙티스이다.
+- 미니멀 프록시는 업그레이더빌리티와는 관계가 없다는점에 유의하자.
 
-더 읽어보기
+## 더 읽어보기
 
 - [https://blog.openzeppelin.com/deep-dive-into-the-minimal-proxy-contract/](https://blog.openzeppelin.com/deep-dive-into-the-minimal-proxy-contract/)
 - [https://medium.com/coinmonks/diving-into-smart-contracts-minimal-proxy-eip-1167-3c4e7f1a41b8](https://medium.com/coinmonks/diving-into-smart-contracts-minimal-proxy-eip-1167-3c4e7f1a41b8)
