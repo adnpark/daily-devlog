@@ -86,7 +86,155 @@ r = (s / ts) * t * R
 
 ## 스테이킹 컨트랙트 구현하기
 
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity >=0.8.4;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "./StakeToken.sol";
+import "./RewardToken.sol";
+
+import "hardhat/console.sol";
+
+struct Staker {
+    uint256 amount; // staking amount
+    uint256 rewards; // current cliamable rewards amount
+    uint256 lastRewardedBlock; // last block number `rewards` calucated
+}
+
+contract NaiveStakingManager {
+    using SafeERC20 for StakeToken;
+    using SafeERC20 for RewardToken;
+    using EnumerableSet for EnumerableSet.AddressSet;
+
+    StakeToken public stakeToken; // Token to be staked
+    RewardToken public rewardToken; // Token to be payed as reward
+
+    uint256 public rewardPerBlock; // Reward token emission per block
+    uint256 public totalStaked; // Total staked tokens
+
+    uint256 public constant SHARE_PRECISION = 1e12;
+
+    EnumerableSet.AddressSet private _stakerList;
+    mapping(address => Staker) private _stakers;
+
+    // Events
+    event Deposit(address indexed user, uint256 amount);
+    event Withdraw(address indexed user, uint256 amount);
+    event Claim(address indexed user, uint256 amount);
+
+    constructor(address stakeToken_, address rewardToken_) {
+        stakeToken = StakeToken(stakeToken_);
+        rewardToken = RewardToken(rewardToken_);
+    }
+
+    /**
+     * @dev stake tokens
+     */
+    function deposit(uint256 amount_) public {
+        require(amount_ > 0, "should deposit non-zero value");
+        Staker storage staker = _stakers[msg.sender];
+
+        // Deposit stake token
+        stakeToken.safeTransferFrom(msg.sender, address(this), amount_);
+
+        // Update rewards of all stakers
+        updateRewards();
+
+        // Add depositer to stakers
+        staker.amount = amount_;
+        totalStaked += amount_;
+        _stakerList.add(msg.sender);
+        emit Deposit(msg.sender, amount_);
+    }
+
+    /**
+     * @dev withdraw all tokens and claim rewards
+     */
+    function withdraw() public {
+        Staker storage staker = _stakers[msg.sender];
+        uint256 withdrawal = staker.amount;
+        require(withdrawal > 0, "cannot withdraw zero value");
+
+        // Update rewards of all stakers
+        updateRewards();
+
+        // Claim rewards
+        claim();
+
+        // Update staker info
+        staker.amount -= withdrawal;
+        totalStaked -= withdrawal;
+        _stakerList.remove(msg.sender);
+
+        // Withdraw
+        stakeToken.safeTransfer(msg.sender, withdrawal);
+        emit Withdraw(msg.sender, withdrawal);
+    }
+
+    /**
+     * @dev claim accumulated rewards
+     */
+    function claim() public {
+        Staker storage staker = _stakers[msg.sender];
+        require(staker.amount > 0, "should stake more than 0");
+
+        // Update rewards of all stakers
+        updateRewards();
+
+        // Claim rewards
+        uint256 claimed = staker.rewards;
+        staker.rewards = 0;
+        rewardToken.mint(msg.sender, claimed);
+        emit Claim(msg.sender, claimed);
+    }
+
+    /**
+     * @notice must update rewards of every staker to check someone's pending rewards
+     */
+    function pendingRewards(address staker) public returns (uint256) {
+        require(_stakerList.contains(staker), "staker does not exist");
+        updateRewards();
+        return _stakers[msg.sender].rewards;
+    }
+
+    function getStakingAmount(address staker) public view returns (uint256) {
+        require(_stakerList.contains(staker), "staker does not exist");
+        return _stakers[msg.sender].amount;
+    }
+
+    function getStakingShares(address staker) public view returns (uint256) {
+        require(_stakerList.contains(staker), "staker does not exist");
+        return (_stakers[msg.sender].amount * SHARE_PRECISION) / totalStaked / SHARE_PRECISION;
+    }
+
+    /**
+     * @dev loop over all stakers and update their rewards according to relative shares and period
+     */
+    function updateRewards() private {
+        for (uint256 i = 0; i < _stakerList.length(); i++) {
+            Staker storage staker = _stakers[_stakerList.at(i)];
+            uint256 stakerShare = (staker.amount * SHARE_PRECISION) / totalStaked;
+            uint256 rewardPeriod = block.number - staker.lastRewardedBlock;
+            uint256 rewards = (rewardPeriod * rewardPerBlock * stakerShare) / SHARE_PRECISION;
+            staker.lastRewardedBlock = block.number;
+            staker.rewards += rewards;
+        }
+    }
+}
+```
+
 - 이제 이를 바탕으로 실제 컨트랙트를 구현해보자.
+
+- 컨트랙트는 매우 단순하게 구현되었다.
+- Staker 타입은
+- deposit, withdraw, claim 등의 주요 함수들이 존재하며, 각각 토큰을 스테이킹하고, 언스테이킹하고, 보상을 수령하는 기능을 담당한다.
+- 하나씩 차례대로 살펴보도록 하자.
+- deposit 함수는
+
+- 자세히 보면 deposit, withdraw, claim 함수 모두 updateRewards 라는 private 함수를 호출하는것을 확인할 수 있다.
 
 - 컨트랙트 이름에 Naive가 붙은 이유에 대해서는 다음 글에서 다시 다루겠다.
 
