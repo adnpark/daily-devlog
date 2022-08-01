@@ -4,11 +4,9 @@
 
 ## 들어가며
 
-실제 크립토 프로젝트를 진행하다보면 꼭 한번쯤은 구현하게 되는 기능이 있다. 바로 토큰의 스테이킹과 그 보상 분배 로직을 구현하는 것이다. 대부분의 크립토 프로젝트라면 토큰이 존재하기 마련이고, 토큰이 존재하면 토큰의 가치 상승을 위한 수 많은 방법을 고안하기 마련이다. 이러한 방법의 일환으로 사용되는것이 바로 토큰을 스테이킹하고 그에 따른 보상을 지급하는 것이다.
-
 ![Untitled](%5B%E1%84%89%E1%85%A9%E1%86%AF%E1%84%85%E1%85%B5%E1%84%83%E1%85%B5%E1%84%90%E1%85%B5%20%E1%84%89%E1%85%B5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%AB%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20%E1%84%89%E1%85%B3%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%8F%E1%85%B5%E1%86%BC%20%E1%84%86%E1%85%B5%E1%86%BE%20%E1%84%90%E1%85%A9%E1%84%8F%E1%85%B3%E1%86%AB%20%E1%84%8B%E1%85%A6%E1%84%86%20b04c18ff85754fa0b0e94967a525c511/Untitled.png)
 
-토큰 스테이킹 기능은 특히 DeFi 프로젝트들이 급격하게 성장하며 상당히 빠르게 대중화 되었다. 그러다보니 어느정도 베스트 프랙티스가 정립되었는데, 그것이 바로 오늘 우리가 참고할 스시스왑의 MasterChef 컨트랙트이다. 아래 이미지에서 확인할 수 있듯이, 수 많은 토큰 스테이킹 컨트랙트들이 MasterChef 를 포크하는 형태로 구현되었다. 
+실제 크립토 프로젝트를 진행하다보면 꼭 한번쯤은 구현하게 되는 기능이 있다. 바로 토큰의 스테이킹과 그 보상 분배 로직을 구현하는 것이다. 토큰 스테이킹 기능은 특히 DeFi 프로젝트들이 급격하게 성장하며 상당히 빠르게 대중화 되었다. 그러다보니 어느정도 베스트 프랙티스가 정립되었는데, 그것이 바로 오늘 우리가 참고할 스시스왑의 MasterChef 컨트랙트이다. 아래 이미지에서 확인할 수 있듯이, 수 많은 토큰 스테이킹 컨트랙트들이 MasterChef 를 포크하는 형태로 구현되었다. 
 
 ![Untitled](%5B%E1%84%89%E1%85%A9%E1%86%AF%E1%84%85%E1%85%B5%E1%84%83%E1%85%B5%E1%84%90%E1%85%B5%20%E1%84%89%E1%85%B5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%AB%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20%E1%84%89%E1%85%B3%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%8F%E1%85%B5%E1%86%BC%20%E1%84%86%E1%85%B5%E1%86%BE%20%E1%84%90%E1%85%A9%E1%84%8F%E1%85%B3%E1%86%AB%20%E1%84%8B%E1%85%A6%E1%84%86%20b04c18ff85754fa0b0e94967a525c511/Untitled%201.png)
 
@@ -20,25 +18,25 @@
 
 우리가 구현할 스테이킹 컨트랙트의 요구사항은 아래와 같다.
 
-1. 네이티브 토큰만을 스테이킹 할 수 있다.
-2. 스테이킹 보상 또한 네이티브 토큰으로 지급된다. 
+1. 한가지의 토큰만 스테이킹 할 수 있다.
+2. 스테이킹 보상은 새로운 리워드 토큰으로 지급된다.
 3. 매 블록마다 새로운 보상 토큰이 발행되며, 모든 스테이커들에게 보상으로 분배된다.
 4. 각 스테이커가 받는 보상 토큰의 수량은 스테이킹한 토큰의 수량과 그 기간에 비례하여 결정된다.
 
 여기서 핵심은 4번, 즉 스테이커들이 각자 스테이킹한 수량과 기간에 따라 얼마의 보상이 지급되어야 하는지를 계산하는 로직이다. 이를 어떻게 구현해보면 좋을까? 우선 직관의 힘을 빌려 단순하게 생각해보자.
 
-철수라는 스테이커가 있다고 할 때, 철수가 받아야 할 스테이킹 보상은 이렇게 계산해보면 될 것 같다.
+철수라는 스테이커가 있다고 할 때, 철수가 받아야 할 스테이킹 보상은 이렇게 계산해볼 수 있다.
 
-1. 우선 전체 스테이킹 수량에서 철수가 차지하는 상대적 지분을 구한다.
-2. 여기에 스테이킹 기간과 단위 시간당 보상을 곱해준다. 
+1. 우선 전체 스테이킹 수량에서 철수가 차지하는 **상대적 지분**을 구한다.
+2. 여기에 **스테이킹 기간**과 **단위 시간당 보상**을 곱해준다. 
 
 조금 더 이해가 쉽게 예시로 다시 살펴보자.
 
-예를 들어, 블록당 새롭게 발행되는 토큰 보상이 100개이고, 스테이킹한 유저는 철수와 영희 두명이 있다고 하자.
+예를 들어, 새롭게 발행되는 **블록당 토큰 보상이 100개**이고, 스테이킹한 유저는 철수와 영희 두명이 있다고 하자.
 
 ![Untitled](%5B%E1%84%89%E1%85%A9%E1%86%AF%E1%84%85%E1%85%B5%E1%84%83%E1%85%B5%E1%84%90%E1%85%B5%20%E1%84%89%E1%85%B5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%AB%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20%E1%84%89%E1%85%B3%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%8F%E1%85%B5%E1%86%BC%20%E1%84%86%E1%85%B5%E1%86%BE%20%E1%84%90%E1%85%A9%E1%84%8F%E1%85%B3%E1%86%AB%20%E1%84%8B%E1%85%A6%E1%84%86%20b04c18ff85754fa0b0e94967a525c511/Untitled%202.png)
 
-철수와 영희 모두 동일하게 5개씩 스테이킹을 했다면, 철수와 영희의 상대적 지분은 50%로 매 블록마다 동일한 상황이다. 따라서 철수와 영희는 모두 동일하게 50개의 스테이킹 보상을 얻게 된다. 
+철수와 영희 모두 동일하게 **5개씩 스테이킹**을 했다면, 철수와 영희의 **상대적 지분은 50%**로 매 블록마다 동일한 상황이다. 따라서 철수와 영희는 모두 동일하게 50개의 스테이킹 보상을 얻게 된다. 
 
 이를 조금 더 일반화하여 수식으로 간단하게 나타내보면 다음과 같다.
 
@@ -50,7 +48,7 @@ r = (s / ts) * t * R
 - R = 블록당 총 스테이킹 보상 수량
 - 즉, s / ts 는 특정 스테이커의 지분을 의미한다.
 
-여기까지만 보면 문제가 쉽게 해결된 것 같은 느낌이 든다. 그런데, 여기서 한가지 놓친것이 있다. 바로 스테이킹 토큰 수량과 전체 스테이킹 토큰 수량, 즉 s와 ts는 고정된 상수가 아니라 변수라는 점이다.
+여기까지만 보면 문제가 쉽게 해결된 것 같은 느낌이 든다. 그런데, 여기서 한가지 놓친것이 있다. 바로 스테이킹 토큰 수량과 전체 스테이킹 토큰 수량, 즉 **s와 ts는 고정된 상수가 아니라 변수라는 점**이다.
 
 쉽게 말해, 철수와 영희는 언제든지 더 많은 토큰을 스테이킹하거나, 기존의 스테이킹된 토큰을 출금할 수도 있다. 혹은 민수라는 새로운 친구가 추가로 스테이킹 할수도 있다!
 
@@ -72,19 +70,23 @@ r = (s / ts) * t * R
 
 - 0~2번 블록의 스테이킹 보상: r(0,2) = (5 / 10) * 3 * 100 = 150
 - 3~4번 블록의 스테이킹 보상: r(3,4) = (5 / 20) * 2 * 100 = 50
-- 0~4번 블록의 스테이킹 보상: r(0,4) = 150 +50 = 200
+- 0~4번 블록의 스테이킹 보상: r(0,4) = r(0,2) + r(3,4) = 150 +50 = 200
 
 마찬가지로 영희의 수령가능한 보상의 양 r(0,4)도 다음과 같이 계산할 수 있다.
 
 - r(0,2) = (5 / 10) * 3 * 100 = 150
 - r(3,4) = (15 / 20) * 2 * 100 = 150
-- r(0,4) = 150 +50 = 300
+- r(0,4) = r(0,2) + r(3,4) = 150 + 150 = 300
 
-이 사례를 통해 확실해진것은 정확한 스테이킹 보상 수량을 구하기 위해서는, 스테이킹 수량에 변동이 있을때마다 이를 반영하여 기록해야 한다는 것이다.
+이 사례를 통해 확실해진것은 정확한 스테이킹 보상 수량을 구하기 위해서는, **스테이킹 수량에 변동이 있을때마다 이를 반영하여 기록**해야 한다는 것이다.
 
 그럼 이제 이론적인 이해는 충분히 했으니, 직접 컨트랙트로 구현해보자.
 
 ## 스테이킹 컨트랙트 구현하기
+
+앞에서 다룬 내용들을 바탕으로 스테이킹 컨트랙트를 아래 코드와 같이 구현해볼 수 있다.
+
+컨트랙트 코드가 조금 장황한데, 하나씩 차례대로 살펴보자.
 
 ```solidity
 // SPDX-License-Identifier: UNLICENSED
@@ -112,7 +114,7 @@ contract NaiveStakingManager {
     StakeToken public stakeToken; // Token to be staked
     RewardToken public rewardToken; // Token to be payed as reward
 
-    uint256 public rewardPerBlock; // Reward token emission per block
+    uint256 public rewardPerBlock; // Reward token emission amount per block
     uint256 public totalStaked; // Total staked tokens
 
     uint256 public constant SHARE_PRECISION = 1e12;
@@ -125,28 +127,37 @@ contract NaiveStakingManager {
     event Withdraw(address indexed user, uint256 amount);
     event Claim(address indexed user, uint256 amount);
 
-    constructor(address stakeToken_, address rewardToken_) {
+    constructor(
+        address stakeToken_,
+        address rewardToken_,
+        uint256 rewardPerBlock_
+    ) {
         stakeToken = StakeToken(stakeToken_);
         rewardToken = RewardToken(rewardToken_);
+        rewardPerBlock = rewardPerBlock_;
     }
 
     /**
+     * @notice must approve stake token first
      * @dev stake tokens
      */
     function deposit(uint256 amount_) public {
         require(amount_ > 0, "should deposit non-zero value");
         Staker storage staker = _stakers[msg.sender];
 
-        // Deposit stake token
+        // Deposit stake token to this contract
         stakeToken.safeTransferFrom(msg.sender, address(this), amount_);
 
         // Update rewards of all stakers
-        updateRewards();
+        _updateRewards();
 
-        // Add depositer to stakers
-        staker.amount = amount_;
+        // Update staker info
+        if (!_stakerList.contains(msg.sender)) {
+            _stakerList.add(msg.sender);
+            staker.lastRewardedBlock = block.number;
+        }
+        staker.amount += amount_;
         totalStaked += amount_;
-        _stakerList.add(msg.sender);
         emit Deposit(msg.sender, amount_);
     }
 
@@ -154,12 +165,14 @@ contract NaiveStakingManager {
      * @dev withdraw all tokens and claim rewards
      */
     function withdraw() public {
+        require(_stakerList.contains(msg.sender), "staker does not exist");
+
         Staker storage staker = _stakers[msg.sender];
         uint256 withdrawal = staker.amount;
         require(withdrawal > 0, "cannot withdraw zero value");
 
         // Update rewards of all stakers
-        updateRewards();
+        _updateRewards();
 
         // Claim rewards
         claim();
@@ -178,11 +191,13 @@ contract NaiveStakingManager {
      * @dev claim accumulated rewards
      */
     function claim() public {
+        require(_stakerList.contains(msg.sender), "staker does not exist");
+
         Staker storage staker = _stakers[msg.sender];
         require(staker.amount > 0, "should stake more than 0");
 
         // Update rewards of all stakers
-        updateRewards();
+        _updateRewards();
 
         // Claim rewards
         uint256 claimed = staker.rewards;
@@ -191,29 +206,32 @@ contract NaiveStakingManager {
         emit Claim(msg.sender, claimed);
     }
 
+    function updateRewards() public {
+        _updateRewards();
+    }
+
     /**
-     * @notice must update rewards of every staker to check someone's pending rewards
+     * @notice must call updateRewards() first to check current pending rewards
      */
-    function pendingRewards(address staker) public returns (uint256) {
+    function getPendingRewards(address staker) public view returns (uint256) {
         require(_stakerList.contains(staker), "staker does not exist");
-        updateRewards();
-        return _stakers[msg.sender].rewards;
+        return _stakers[staker].rewards;
     }
 
     function getStakingAmount(address staker) public view returns (uint256) {
         require(_stakerList.contains(staker), "staker does not exist");
-        return _stakers[msg.sender].amount;
+        return _stakers[staker].amount;
     }
 
     function getStakingShares(address staker) public view returns (uint256) {
         require(_stakerList.contains(staker), "staker does not exist");
-        return (_stakers[msg.sender].amount * SHARE_PRECISION) / totalStaked / SHARE_PRECISION;
+        return (_stakers[staker].amount * SHARE_PRECISION) / totalStaked / SHARE_PRECISION;
     }
 
     /**
      * @dev loop over all stakers and update their rewards according to relative shares and period
      */
-    function updateRewards() private {
+    function _updateRewards() private {
         for (uint256 i = 0; i < _stakerList.length(); i++) {
             Staker storage staker = _stakers[_stakerList.at(i)];
             uint256 stakerShare = (staker.amount * SHARE_PRECISION) / totalStaked;
@@ -226,20 +244,28 @@ contract NaiveStakingManager {
 }
 ```
 
-- 이제 이를 바탕으로 실제 컨트랙트를 구현해보자.
-
-- 컨트랙트는 매우 단순하게 구현되었다.
-- Staker 타입은
+- NaiveStakingManager 컨트랙트는 유저들이 토큰을 스테이킹하여 그 보상으로 새로운 토큰을 받을 수 있게 한다.
 - deposit, withdraw, claim 등의 주요 함수들이 존재하며, 각각 토큰을 스테이킹하고, 언스테이킹하고, 보상을 수령하는 기능을 담당한다.
-- 하나씩 차례대로 살펴보도록 하자.
-- deposit 함수는
-
-- 자세히 보면 deposit, withdraw, claim 함수 모두 updateRewards 라는 private 함수를 호출하는것을 확인할 수 있다.
-
-- 컨트랙트 이름에 Naive가 붙은 이유에 대해서는 다음 글에서 다시 다루겠다.
-
-- 이렇게 또 문제가 해결된 것 같지만 사실 그렇지 않다.
-- 여기서 알 수 있는것은 우리의 계산방식이
+- 그런데 자세히 보면 deposit, withdraw, claim 함수 모두 _updateRewards 함수를 호출하는것을 확인할 수 있다.
+- 사실 이 컨트랙트의 핵심 기능은 _updateRewards 함수에 있다고 해도 과언이 아니다.
+- 앞에서 우리는 철수와 영희의 스테이킹 시나리오를 통해 스테이킹 토큰 수량에 변동이 있을 때 마다 보상을 산정하는 공식의 변수값이 달라져야 한다는것을 깨달았다.
+- 바로 _updateRewards 함수가 바로 이 기능을 담당하고 있다.
+- _updateRewards 함수는 모든 스테이커들의 현재 수령 가능한 보상을 계산하여 그 값을 저장한다. 더 정확하게 표현하면, 마지막으로 보상을 계산한 지점부터 현재 시점까지 해당 스테이커의 상대적 지분을 기반으로 받을 수 있는 보상의 양을 계산한다.
+    
+    ![Untitled](%5B%E1%84%89%E1%85%A9%E1%86%AF%E1%84%85%E1%85%B5%E1%84%83%E1%85%B5%E1%84%90%E1%85%B5%20%E1%84%89%E1%85%B5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%AB%20%E1%84%8A%E1%85%B5-%E1%84%85%E1%85%B5%E1%84%8C%E1%85%B3%5D%20%E1%84%89%E1%85%B3%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%8F%E1%85%B5%E1%86%BC%20%E1%84%86%E1%85%B5%E1%86%BE%20%E1%84%90%E1%85%A9%E1%84%8F%E1%85%B3%E1%86%AB%20%E1%84%8B%E1%85%A6%E1%84%86%20b04c18ff85754fa0b0e94967a525c511/Untitled%204.png)
+    
+- 다시 철수와 영희의 예시로 돌아가보자. _updateRewards 함수는 스테이킹 수량에 변동이 있을때마다 호출된다. 즉, 위 예시에서는 총 세번(Block 0, 3, 5) 호출되어 0~5번 블록까지의 보상을 오차 없이 잘 계산하게 된다.
+- 정리하면, _updateRewards를 통해 통해 우리는 스테이킹 수량에 변동이 있을때마다 정확하게 보상을 계산할 수 있게 된 것이다.
+- 여기까지만 보면 모든 문제가 해결된것처럼 보인다. 요구사항을 충분히 만족하는 형태로 컨트랙트가 잘 구현되었다.
+- 하지만, 이 컨트랙트에는 매우 치명적인 단점이 존재한다.
+- 스테이킹 수량에 변동이 있을때마다 “모든" 스테이커들을 순회하며 보상을 계속해서 업데이트해야 한다는 점이다.
+- 이는 가스 비용 측면에서 매우 큰 비효율을 초래할 수 밖에 없다.
+- 단순히 수령 가능한 보상을 보기 위해서도 업데이트를 수동으로 해줘야 하는 불편함은 덤이다.
+- 이 때문에 사실 이 컨트랙트에는 앞에 Naive 라는 단어가 붙어있다.
+- 그렇다면 이 Naive한 컨트랙트를 효율적인 스테이킹 컨트랙트로 바꾸려면 어떻게 해야할까?
+- 만약 모든 스테이커들의 보상을 주기적으로 업데이트 할 필요 없이 스테이킹 보상을 정확하게 계산할 수 있다면 모든 문제가 해결될 것이다.
+- 이 지점이 바로 스시스왑의 MasterChef 컨트랙트가 스테이킹 컨트랙트의 베스트 프랙티스인 이유이다.
+- 다음 글에서는 본격적으로 스테이킹 컨트랙트의 베스트 프랙티스를 이해하고, 직접 구현하는것까지 다뤄보겠다.
 
 [https://www.nansen.ai/research/all-hail-masterchef-analysing-yield-farming-activity](https://www.nansen.ai/research/all-hail-masterchef-analysing-yield-farming-activity)
 
